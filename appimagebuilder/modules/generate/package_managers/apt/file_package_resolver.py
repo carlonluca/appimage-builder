@@ -11,6 +11,7 @@
 #  all copies or substantial portions of the Software.
 import logging
 import subprocess
+import re
 
 from appimagebuilder.utils import shell
 
@@ -38,13 +39,52 @@ class FilePackageResolver:
         stdout_data = _proc.stdout.decode()
         return stdout_data
 
+    def _extract_package_names(self, pkg_names):
+        """
+        Checks if pkg_names is in the form 'diversion by <package_names> to <destination>'
+        and extracts the package names if it is.
+        """
+        # Define the regex to match the diversion format
+        match = re.match(r"diversion by (.+?) (to|from)", pkg_names)
+        if match:
+            extracted_names = match.group(1).strip()
+            logging.debug(f"Extracted package names from diversion: {extracted_names}")
+            return extracted_names
+        else:
+            logging.debug(f"No diversion format found in: {pkg_names}")
+            return pkg_names.strip()
+
     def _parse_dpkg_query_s_output(self, stdout_data):
+        logging.debug("Starting to parse dpkg-query output.")
+        
+        # Initialize an empty dictionary to store results
         results = {}
+        logging.debug("Initialized empty results dictionary.")
+        
+        # Process each line in the output
         for line in stdout_data.splitlines():
+            logging.debug(f"Processing line: {line}")
+            
+            # Split the line into package names and file path
             line_parts = line.split(sep=": ", maxsplit=1)
-            pkg_names = line_parts[0]
+            
+            if len(line_parts) != 2:
+                logging.warning(f"Line format unexpected, skipping: {line}")
+                continue
+            
+            pkg_names = self._extract_package_names(line_parts[0])
             file_path = line_parts[1]
+
+            logging.debug(f"Package names: {pkg_names}, File path: {file_path}")
+            
+            # Process each package name in case of multiple names
             for pkg_name in pkg_names.split(","):
                 pkg_name = pkg_name.strip()
+                logging.debug(f"Parsed package name: {pkg_name}")
+                
+                # Assign the package name to the file path in results
                 results[file_path] = pkg_name
+                logging.debug(f"Mapping file path '{file_path}' to package name '{pkg_name}'")
+        
+        logging.debug(f"Completed parsing. Final results: {results}")
         return results
